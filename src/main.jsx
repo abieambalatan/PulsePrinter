@@ -213,7 +213,9 @@ function LiveSubPage({ active, query, setQuery, printers: connectedPrinters, use
     setSyncMessage('')
     try {
       const result = await syncPrinters()
-      setSyncMessage(`${result.synced} printer(s) synced.`)
+      setSyncMessage(result.synced
+        ? `${result.synced} printer(s) synced.`
+        : 'No Windows printers were found by the cloud server. Set up the Windows monitor on the PC connected to your USB printer.')
       onRefresh()
     } catch (error) {
       setSyncMessage(error.message)

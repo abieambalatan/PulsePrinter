@@ -14,6 +14,7 @@ urlpatterns = [
     path('printers/', views.printers),
     path('printers/sync/', views.sync_printers),
     path('print-jobs/', views.print_jobs),
+    path('print-jobs/ingest/', views.ingest_print_job),
     path('paper-usage/', views.paper_usage),
     path('alerts/', views.alerts),
     path('reports/summary/', views.report_summary),

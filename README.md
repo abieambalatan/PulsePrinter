@@ -77,11 +77,28 @@ Administrator sign-in uses Django sessions. Local development uses SQLite; Windo
 
 The root `render.yaml` defines a native Python web service and a private PostgreSQL database in Singapore. Render builds the React frontend, serves it from Django alongside the API, runs migrations before deploy, and provides HTTPS. Docker is not required.
 
-1. Push this project, including `render.yaml`, to a GitHub, GitLab, or Bitbucket repository connected to your Render account.
-2. In Render, create a new Blueprint and select that repository. Review the proposed services and costs before applying them.
-3. After the first deploy is live, open the web service Shell and run `cd backend && python manage.py createsuperuser` to create the first sign-in.
-4. Open the service URL, sign in, and add or sync the printer inventory.
+1. Push this project, including `render.yaml`, to the Git repository connected to your Render account.
+2. In Render, create a Blueprint for that repository and review the proposed services and costs before applying them.
+3. Open the service URL and sign in as `admin`. Retrieve the generated `PRINTPULSE_INITIAL_ADMIN_PASSWORD` from the web service's Environment page.
+4. For a USB printer, install its Windows driver on the PC it is connected to, then set up the local monitor below. You can also use **Add printer** to enter inventory before its first print job is captured.
+
+### Connect a USB printer to the cloud dashboard
+
+The USB printer must stay connected to a Windows PC that is powered on, awake, signed in, and connected to the internet. Jobs must be printed through that PC's Windows printer queue. The Windows monitor sends completed job details to Render over HTTPS; no router port forwarding is needed.
+
+1. After the latest Render deploy is live, open the web service's **Environment** page and copy `PRINTPULSE_AGENT_TOKEN`. Keep this secret private.
+2. On the USB-connected PC, get this repository from GitHub and open **PowerShell as Administrator** using the same Windows account that will run the monitor.
+3. From the repository folder, run:
+
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File .\windows-agent\Setup-PrintPulseAgent.ps1
+   ```
+
+4. Paste the token when prompted. The setup enables the Windows PrintService Operational log, stores the token protected for that Windows account, starts the monitor, and configures it to start again when you sign in.
+5. Print a test page to the USB printer. The completed job should appear in **Print Jobs** on the Render site.
+
+The monitor uploads the Windows username, printer name, page count, computer name, and print time. It does not upload document titles or document contents. Generic Windows print events do not provide reliable paper size, toner, or paper-level readings, so captured jobs show paper size as **Unknown** and do not update those hardware levels. The monitor starts from setup time and does not import older print history. Jobs sent directly to another printer or through a different PC are not captured.
 
 The Blueprint currently uses Render's free web and Postgres plans for a no-card demo. The first administrator is created automatically with a generated password; retrieve `PRINTPULSE_INITIAL_ADMIN_PASSWORD` from the web service's Environment page after deployment and keep it private. Free web services spin down after inactivity, and free Postgres expires after 30 days, so export the database before then or the recorded inventory may be lost.
 
-The new cloud database starts empty; the local SQLite database is not copied automatically. Printer discovery uses Windows Spooler, so it must run on a Windows computer that can see the office printers; the cloud web server cannot discover office printers by itself. The current project does not yet include an office agent that continuously sends every print job to the cloud, so deployment enables remote viewing of records stored in the cloud but does not by itself guarantee live print transaction collection.
+The new cloud database starts empty; the local SQLite database is not copied automatically. Windows printer discovery and print-job monitoring run on the office PC because the cloud server cannot access USB devices or the office network directly.

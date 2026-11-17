@@ -2,17 +2,21 @@ from collections import defaultdict
 from datetime import timedelta
 from html import escape
 from io import BytesIO
+import hmac
 import json
 import os
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.exceptions import ValidationError
-from django.db.models import Count, Sum
+from django.db import transaction
+from django.db.models import Count, F, Sum
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from django.utils import timezone
-from django.utils.dateparse import parse_date
+from django.utils.dateparse import parse_date, parse_datetime
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -275,6 +279,85 @@ def print_jobs(request):
     if query:
         jobs = jobs.filter(user_name__icontains=query) | jobs.filter(printer__name__icontains=query)
     return JsonResponse({'results': [_job_data(job, index) for index, job in enumerate(jobs[:100])]})
+
+
+@csrf_exempt
+@require_POST
+def ingest_print_job(request):
+    """Accept completed Windows spooler jobs from the authenticated office agent."""
+    expected_token = settings.PRINTPULSE_AGENT_TOKEN
+    if not expected_token:
+        return JsonResponse({'detail': 'PrintPulse agent ingestion is not configured.'}, status=503)
+
+    authorization = request.headers.get('Authorization', '')
+    if not hmac.compare_digest(authorization, f'Bearer {expected_token}'):
+        return JsonResponse({'detail': 'Agent authentication failed.'}, status=401)
+
+    if len(request.body) > 16_384:
+        return JsonResponse({'detail': 'Request body is too large.'}, status=413)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'detail': 'Invalid JSON request body.'}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({'detail': 'Request body must be a JSON object.'}, status=400)
+
+    printer_name = str(payload.get('printer_name', '')).strip()
+    user_name = str(payload.get('user_name', '')).strip()
+    source_machine = str(payload.get('source_machine', '')).strip()
+    source_event_id = str(payload.get('source_event_id', '')).strip()
+    if not printer_name or len(printer_name) > 120:
+        return JsonResponse({'detail': 'A printer name up to 120 characters is required.'}, status=400)
+    if len(user_name) > 120 or not source_machine or len(source_machine) > 120:
+        return JsonResponse({'detail': 'User or source computer name is invalid.'}, status=400)
+    if not source_event_id or len(source_event_id) > 100:
+        return JsonResponse({'detail': 'A Windows event record ID is required.'}, status=400)
+    try:
+        pages = int(payload.get('pages', 0))
+    except (TypeError, ValueError):
+        return JsonResponse({'detail': 'Page count must be a whole number.'}, status=400)
+    if pages < 0 or pages > 10_000_000:
+        return JsonResponse({'detail': 'Page count is outside the accepted range.'}, status=400)
+
+    printed_at = parse_datetime(str(payload.get('created_at', '')).strip())
+    if printed_at is None:
+        printed_at = timezone.now()
+    elif timezone.is_naive(printed_at):
+        printed_at = timezone.make_aware(printed_at, timezone.get_current_timezone())
+
+    received_at = timezone.now()
+    with transaction.atomic():
+        printer = Printer.objects.filter(name__iexact=printer_name).first()
+        if printer is None:
+            printer = Printer.objects.create(
+                name=printer_name,
+                status=Printer.ONLINE,
+                connection_type='Windows Spooler',
+                last_seen=received_at,
+            )
+
+        _, created = PrintJob.objects.get_or_create(
+            source_machine=source_machine,
+            source_event_id=source_event_id,
+            defaults={
+                'user_name': user_name or 'Unknown user',
+                'printer': printer,
+                'pages': pages,
+                # Generic Windows print events do not reliably expose paper size.
+                'paper_size': 'Unknown',
+                'status': PrintJob.COMPLETED,
+                'created_at': printed_at,
+            },
+        )
+        if created:
+            Printer.objects.filter(pk=printer.pk).update(
+                total_jobs=F('total_jobs') + 1,
+                total_pages=F('total_pages') + pages,
+                status=Printer.ONLINE,
+                last_seen=received_at,
+            )
+
+    return JsonResponse({'status': 'recorded' if created else 'duplicate'})
 
 
 @require_GET
