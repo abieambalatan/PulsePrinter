@@ -8,15 +8,17 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     throw 'Run this setup in PowerShell as Administrator, using your normal Windows account.'
 }
 
+Write-Host 'Step 1 of 2: Press Enter to use the default website URL. Do not paste the agent token here.'
 $apiBaseUrl = (Read-Host "PrintPulse URL [$defaultUrl]").Trim()
 if (-not $apiBaseUrl) { $apiBaseUrl = $defaultUrl }
 $apiBaseUrl = $apiBaseUrl.TrimEnd('/')
 $parsedUrl = $null
 if (-not [Uri]::TryCreate($apiBaseUrl, [UriKind]::Absolute, [ref]$parsedUrl) -or $parsedUrl.Scheme -ne 'https') {
-    throw 'Enter the HTTPS address of your PrintPulse site.'
+    throw 'That is not an HTTPS URL. Rerun setup, press Enter to accept the default URL, then paste the agent token at the next prompt.'
 }
 
-$agentToken = Read-Host 'Paste PRINTPULSE_AGENT_TOKEN from the Render Environment page' -AsSecureString
+Write-Host 'Step 2 of 2: Paste the token from the Render Environment page at the next prompt.'
+$agentToken = Read-Host 'Paste PRINTPULSE_AGENT_TOKEN_V2' -AsSecureString
 if ($agentToken.Length -eq 0) { throw 'The agent token cannot be empty.' }
 
 Write-Host 'Checking that PrintPulse is reachable...'

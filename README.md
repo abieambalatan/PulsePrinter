@@ -86,7 +86,7 @@ The root `render.yaml` defines a native Python web service and a private Postgre
 
 The USB printer must stay connected to a Windows PC that is powered on, awake, signed in, and connected to the internet. Jobs must be printed through that PC's Windows printer queue. The Windows monitor sends completed job details to Render over HTTPS; no router port forwarding is needed.
 
-1. After the latest Render deploy is live, open the web service's **Environment** page and copy `PRINTPULSE_AGENT_TOKEN`. Keep this secret private.
+1. After the latest Render deploy is live, open the web service's **Environment** page and copy `PRINTPULSE_AGENT_TOKEN_V2`. Keep this secret private.
 2. On the USB-connected PC, get this repository from GitHub and open **PowerShell as Administrator** using the same Windows account that will run the monitor.
 3. From the repository folder, run:
 
@@ -97,7 +97,9 @@ The USB printer must stay connected to a Windows PC that is powered on, awake, s
 4. Paste the token when prompted. The setup enables the Windows PrintService Operational log, stores the token protected for that Windows account, starts the monitor, and configures it to start again when you sign in.
 5. Print a test page to the USB printer. The completed job should appear in **Print Jobs** on the Render site.
 
-The monitor uploads the Windows username, printer name, page count, computer name, and print time. It does not upload document titles or document contents. Generic Windows print events do not provide reliable paper size, toner, or paper-level readings, so captured jobs show paper size as **Unknown** and do not update those hardware levels. The monitor starts from setup time and does not import older print history. Jobs sent directly to another printer or through a different PC are not captured.
+Plugging in or installing the printer does not add it to PrintPulse by itself. The monitor creates the printer entry after it sees the first completed print job sent through that PC's Windows printer queue. It starts from setup time and does not import older print history. To add the printer to inventory before printing, use **Printers → Add printer** in PrintPulse.
+
+The monitor uploads the Windows username, printer name, page count, computer name, and print time. It does not upload document titles or document contents. Generic Windows print events do not provide reliable paper size, toner, or paper-level readings, so captured jobs show paper size as **Unknown** and do not update those hardware levels. Jobs sent directly to another printer or through a different PC are not captured.
 
 The Blueprint currently uses Render's free web and Postgres plans for a no-card demo. The first administrator is created automatically with a generated password; retrieve `PRINTPULSE_INITIAL_ADMIN_PASSWORD` from the web service's Environment page after deployment and keep it private. Free web services spin down after inactivity, and free Postgres expires after 30 days, so export the database before then or the recorded inventory may be lost.
 

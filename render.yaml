@@ -31,4 +31,6 @@ services:
       - key: PRINTPULSE_INITIAL_ADMIN_PASSWORD
         generateValue: true
       - key: PRINTPULSE_AGENT_TOKEN
+        value: ""
+      - key: PRINTPULSE_AGENT_TOKEN_V2
         generateValue: true

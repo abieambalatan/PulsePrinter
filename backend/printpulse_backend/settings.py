@@ -7,7 +7,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 AGENT_TOKEN_FILE = BASE_DIR / '.agent-token'
-PRINTPULSE_AGENT_TOKEN = os.environ.get('PRINTPULSE_AGENT_TOKEN', '')
+PRINTPULSE_AGENT_TOKEN = os.environ.get('PRINTPULSE_AGENT_TOKEN_V2', '')
 if not PRINTPULSE_AGENT_TOKEN and AGENT_TOKEN_FILE.exists():
     PRINTPULSE_AGENT_TOKEN = AGENT_TOKEN_FILE.read_text(encoding='utf-8').strip()
 
