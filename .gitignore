@@ -1,0 +1,11 @@
+.env
+.venv/
+venv/
+node_modules/
+dist/
+frontend-dist/
+backend/db.sqlite3
+backend/.agent-token
+backend/staticfiles/
+__pycache__/
+*.py[cod]
