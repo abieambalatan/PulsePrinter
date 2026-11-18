@@ -55,7 +55,7 @@ To import printers installed on the Windows machine through Windows Spooler:
 python backend/manage.py sync_spooler
 ```
 
-Sign in with the administrator credentials created by `create_admin`. The React dashboard loads records from Django. The Add Printer form registers a printer profile; install the printer in Windows and run printer sync to discover it from Windows Spooler.
+Sign in with the administrator credentials created by `create_admin`. The React dashboard loads records from Django. The Add Printer form registers a printer profile. Local Windows development can use `sync_spooler`; on Render, the Windows monitor reports installed printers because the cloud server cannot scan the office PC.
 
 The Reports page and dashboard Export Report button download a formatted PDF report from Django. It includes summary metrics, paper usage by size, printer inventory, print job history, and error history.
 
@@ -64,14 +64,15 @@ The Reports page and dashboard Export Report button download a formatted PDF rep
 - `GET /api/dashboard/`
 - `GET /api/printers/`
 - `POST /api/printers/` (admin manual registration)
-- `POST /api/printers/sync/` (Windows Spooler discovery)
+- `POST /api/printers/sync/` (recent Windows monitor inventory)
+- `POST /api/printers/agent-sync/` (agent-authenticated local inventory upload)
 - `GET /api/print-jobs/`
 - `GET /api/paper-usage/`
 - `GET /api/alerts/`
 - `GET /api/reports/summary/`
 - `GET /api/reports/export/` (PDF download)
 
-Administrator sign-in uses Django sessions. Local development uses SQLite; Windows Spooler discovery requires `pywin32` and printers installed in Windows. Backend setup installs the PDF library with `python -m pip install -r backend/requirements.txt`.
+Administrator sign-in uses Django sessions. Local development uses SQLite; the `sync_spooler` management command requires `pywin32` and printers installed in Windows. Backend setup installs the PDF library with `python -m pip install -r backend/requirements.txt`.
 
 ## Deploy to Render
 
@@ -97,10 +98,15 @@ The USB printer must stay connected to a Windows PC that is powered on, awake, s
 4. Paste the token when prompted. The setup enables the Windows PrintService Operational log, stores the token protected for that Windows account, starts the monitor, and configures it to start again when you sign in.
 5. Print a test page to the USB printer. The completed job should appear in **Print Jobs** on the Render site.
 
-Plugging in or installing the printer does not add it to PrintPulse by itself. The monitor creates the printer entry after it sees the first completed print job sent through that PC's Windows printer queue. It starts from setup time and does not import older print history. To add the printer to inventory before printing, use **Printers → Add printer** in PrintPulse.
+The Windows monitor reports installed printer names and locations to PrintPulse about once a minute, so they appear in the inventory without waiting for a print job. The **Refresh monitor inventory** button shows printers that checked in during the last three minutes. The monitor starts from setup time and does not import older print history.
 
-The monitor uploads the Windows username, printer name, page count, computer name, and print time. It does not upload document titles or document contents. Generic Windows print events do not provide reliable paper size, toner, or paper-level readings, so captured jobs show paper size as **Unknown** and do not update those hardware levels. Jobs sent directly to another printer or through a different PC are not captured.
+The monitor uploads the Windows username, printer name, page count, computer name, and print time. It does not upload document titles or document contents. To identify paper size, it briefly polls Windows' active print-job data and associates a reported size with the completed job; some drivers omit that value and very fast jobs may leave the queue before a poll, so those jobs remain **Unknown**. Toner and paper-level readings are not available from these generic events. Jobs sent directly to another printer or through a different PC are not captured.
 
 The Blueprint currently uses Render's free web and Postgres plans for a no-card demo. The first administrator is created automatically with a generated password; retrieve `PRINTPULSE_INITIAL_ADMIN_PASSWORD` from the web service's Environment page after deployment and keep it private. Free web services spin down after inactivity, and free Postgres expires after 30 days, so export the database before then or the recorded inventory may be lost.
 
 The new cloud database starts empty; the local SQLite database is not copied automatically. Windows printer discovery and print-job monitoring run on the office PC because the cloud server cannot access USB devices or the office network directly.
+
+for client
+//Set-Location "C:\Design and Development of a Universal Printer Monitoring and Paper Usage Tracking System"
+git pull origin main
+powershell.exe -ExecutionPolicy Bypass -File ".\windows-agent\Setup-PrintPulseAgent.ps1"//

@@ -46,6 +46,13 @@ $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 New-Item -Path $runKey -Force | Out-Null
 Set-ItemProperty -Path $runKey -Name 'PrintPulseAgent' -Value $startupCommand
 
+# Replace an already-running copy so an upgrade does not leave two monitors
+# polling the same event log and writing the shared cursor file.
+$agentPathFull = [IO.Path]::GetFullPath($agentPath)
+Get-CimInstance -ClassName Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.IndexOf($agentPathFull, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
 $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "{0}"' -f $agentPath
 Start-Process -FilePath $powershellPath -ArgumentList $arguments -WindowStyle Hidden
 

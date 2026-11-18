@@ -26,7 +26,6 @@ from reportlab.lib.units import mm
 from reportlab.platypus import LongTable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from .models import Alert, PaperUsage, PrintJob, Printer
-from .services.spooler import discover_windows_printers
 
 
 AVATAR_COLORS = ['coral', 'blue', 'violet', 'green']
@@ -258,17 +257,63 @@ def printers(request):
 @require_POST
 @api_login_required
 def sync_printers(request):
-    discovered = discover_windows_printers()
-    for row in discovered:
-        Printer.objects.update_or_create(
-            name=row['name'],
-            defaults={
-                'status': row['status'],
-                'connection_type': 'Windows Spooler',
-                'last_seen': timezone.now(),
-            },
-        )
-    return JsonResponse({'synced': len(discovered), 'printers': [_printer_data(printer) for printer in Printer.objects.all()]})
+    # Render cannot enumerate Windows printers installed on an office PC. The
+    # local agent reports them to agent_sync_printers; this endpoint reports
+    # which spooler printers have checked in recently.
+    cutoff = timezone.now() - timedelta(minutes=3)
+    recently_reported = Printer.objects.filter(
+        connection_type='Windows Spooler', last_seen__gte=cutoff,
+    ).order_by('name')
+    return JsonResponse({
+        'synced': recently_reported.count(),
+        'printers': [_printer_data(printer) for printer in recently_reported],
+    })
+
+
+@csrf_exempt
+@require_POST
+def agent_sync_printers(request):
+    """Receive installed printer inventory from a locally running Windows agent."""
+    expected_token = settings.PRINTPULSE_AGENT_TOKEN
+    if not expected_token:
+        return JsonResponse({'detail': 'PrintPulse agent ingestion is not configured.'}, status=503)
+    authorization = request.headers.get('Authorization', '')
+    if not hmac.compare_digest(authorization, f'Bearer {expected_token}'):
+        return JsonResponse({'detail': 'Agent authentication failed.'}, status=401)
+    if len(request.body) > 65_536:
+        return JsonResponse({'detail': 'Request body is too large.'}, status=413)
+    try:
+        payload = json.loads(request.body or b'{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({'detail': 'Invalid JSON request body.'}, status=400)
+    if not isinstance(payload, dict) or not isinstance(payload.get('printers'), list):
+        return JsonResponse({'detail': 'A printers array is required.'}, status=400)
+    source_machine = str(payload.get('source_machine', '')).strip()
+    if not source_machine or len(source_machine) > 120:
+        return JsonResponse({'detail': 'A valid source computer name is required.'}, status=400)
+
+    received_at = timezone.now()
+    synced = 0
+    for row in payload['printers'][:200]:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get('name', '')).strip()
+        if not name or len(name) > 120:
+            continue
+        location = str(row.get('location', '')).strip()[:120]
+        status = str(row.get('status', Printer.ONLINE)).strip()
+        if status not in {choice[0] for choice in Printer.STATUS_CHOICES}:
+            status = Printer.ONLINE
+        defaults = {
+            'status': status,
+            'connection_type': 'Windows Spooler',
+            'last_seen': received_at,
+        }
+        if location:
+            defaults['location'] = location
+        Printer.objects.update_or_create(name=name, defaults=defaults)
+        synced += 1
+    return JsonResponse({'synced': synced})
 
 
 @require_GET
@@ -319,6 +364,11 @@ def ingest_print_job(request):
     if pages < 0 or pages > 10_000_000:
         return JsonResponse({'detail': 'Page count is outside the accepted range.'}, status=400)
 
+    paper_size = str(payload.get('paper_size', 'Unknown')).strip()
+    allowed_paper_sizes = {choice[0] for choice in PrintJob.PAPER_CHOICES}
+    if paper_size not in allowed_paper_sizes:
+        paper_size = 'Unknown'
+
     printed_at = parse_datetime(str(payload.get('created_at', '')).strip())
     if printed_at is None:
         printed_at = timezone.now()
@@ -343,8 +393,7 @@ def ingest_print_job(request):
                 'user_name': user_name or 'Unknown user',
                 'printer': printer,
                 'pages': pages,
-                # Generic Windows print events do not reliably expose paper size.
-                'paper_size': 'Unknown',
+                'paper_size': paper_size,
                 'status': PrintJob.COMPLETED,
                 'created_at': printed_at,
             },
@@ -356,6 +405,15 @@ def ingest_print_job(request):
                 status=Printer.ONLINE,
                 last_seen=received_at,
             )
+            if paper_size != 'Unknown':
+                usage_date = timezone.localdate(printed_at)
+                usage, usage_created = PaperUsage.objects.get_or_create(
+                    paper_size=paper_size,
+                    usage_date=usage_date,
+                    defaults={'sheets': pages},
+                )
+                if not usage_created:
+                    PaperUsage.objects.filter(pk=usage.pk).update(sheets=F('sheets') + pages)
 
     return JsonResponse({'status': 'recorded' if created else 'duplicate'})
 

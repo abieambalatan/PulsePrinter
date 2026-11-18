@@ -13,6 +13,7 @@ urlpatterns = [
     path('dashboard/', views.dashboard),
     path('printers/', views.printers),
     path('printers/sync/', views.sync_printers),
+    path('printers/agent-sync/', views.agent_sync_printers),
     path('print-jobs/', views.print_jobs),
     path('print-jobs/ingest/', views.ingest_print_job),
     path('paper-usage/', views.paper_usage),
