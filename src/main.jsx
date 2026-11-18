@@ -33,7 +33,15 @@ const navItems = [
   { label: 'Reports', icon: 'chart' },
 ]
 
+function getTimeGreeting() {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
 function App() {
+  const [greeting, setGreeting] = useState(getTimeGreeting)
   const [active, setActive] = useState('Dashboard')
   const [range, setRange] = useState('Last 7 days')
   const [query, setQuery] = useState('')
@@ -43,6 +51,11 @@ function App() {
   const [apiConnected, setApiConnected] = useState(false)
   const [user, setUser] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setGreeting(getTimeGreeting()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   const loadDashboard = async () => {
     try {
@@ -116,7 +129,7 @@ function App() {
       <main className="main-content">
         <header className="topbar"><div className="breadcrumbs"><span>Workspace</span><Icon name="chevron" size={14} /><b>{active}</b></div><div className="topbar-actions"><div className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search anything..." /></div><button className="icon-button notification-button" onClick={() => setShowNotifications(!showNotifications)}><Icon name="bell" size={19} /><i></i></button>{showNotifications && <div className="notification-popover"><b>Notifications</b>{dashboardData?.alerts?.length ? dashboardData.alerts.map((alert) => <p key={alert.id}>{alert.title}: {alert.detail}</p>) : <p>No active notifications.</p>}</div>}<div className="top-avatar avatar-teal">{(user.first_name || user.username).slice(0, 2).toUpperCase()}</div></div></header>
         <div className="page-content">
-          <section className="page-heading"><div><div className="eyebrow"><span className="live-dot"></span> SYSTEM OVERVIEW <span className="muted">•</span> {lastUpdated}</div><h1>Good morning, {user.first_name || user.name || user.username} <span>👋</span></h1><p>Here’s what’s happening with your printing environment today.</p></div><div className="heading-actions"><button className="button secondary" onClick={refresh}><Icon name="refresh" size={16} /> Refresh</button><button className="button primary" onClick={() => setActive('Reports')}><Icon name="download" size={16} /> Export report</button></div></section>
+          <section className="page-heading"><div><div className="eyebrow"><span className="live-dot"></span> SYSTEM OVERVIEW <span className="muted">•</span> {lastUpdated}</div><h1>{greeting}, {user.first_name || user.name || user.username} <span>👋</span></h1><p>Here’s what’s happening with your printing environment today.</p></div><div className="heading-actions"><button className="button secondary" onClick={refresh}><Icon name="refresh" size={16} /> Refresh</button><button className="button primary" onClick={() => setActive('Reports')}><Icon name="download" size={16} /> Export report</button></div></section>
 
           {active !== 'Dashboard' ? <LiveSubPage active={active} query={query} setQuery={setQuery} printers={dashboardPrinters} user={user} apiConnected={apiConnected} onRefresh={refresh} onDownloadReport={handleReportDownload} onUpdateProfile={handleProfileUpdate} /> : <Dashboard range={range} setRange={setRange} dashboardData={dashboardData} />}
         </div>
